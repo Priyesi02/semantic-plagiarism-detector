@@ -55,7 +55,7 @@ with st.sidebar:
 6. Pairs above threshold flagged
 """)
     st.markdown("---")
-    st.caption("Semantic Plagiarism Detector v2.0 · FAISS edition")
+    st.caption("Semantic Plagiarism Detector · FAISS edition")
 
 # ── Header ────────────────────────────────────────────────────────────────────
 st.title("🔍 Semantic Plagiarism Detection System")
