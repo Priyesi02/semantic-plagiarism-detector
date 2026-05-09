@@ -34,7 +34,7 @@ st.markdown("""
 
 # ── Sidebar ───────────────────────────────────────────────────────────────────
 with st.sidebar:
-    st.image("https://img.icons8.com/fluency/96/plagiarism.png", width=72)
+    st.markdown("<div style='font-size: 72px; line-height: 1;'>🕵️‍♂️</div>", unsafe_allow_html=True)
     st.title("⚙️ Settings")
 
     threshold = st.slider("Plagiarism Threshold", 0.50, 0.99,
@@ -332,4 +332,4 @@ with tab_drill:
 
 # ── Footer ────────────────────────────────────────────────────────────────────
 st.divider()
-st.caption("🎓 Semantic Plagiarism Detection System v2.0 · Sentence Transformers + FAISS · Streamlit")
+st.caption("🎓 Semantic Plagiarism Detection System · Sentence Transformers + FAISS · Streamlit")
