@@ -100,12 +100,12 @@ def test_find_plagiarised_chunks_deduplicates(two_doc_data):
     chunked = {"doc_a": ["c0", "c1"], "doc_b": ["c0", "c1"]}
     index, registry = build_index(embeddings, chunked, index_type="flat")
     matches = find_plagiarised_chunks(embeddings, chunked, index, registry, threshold=0.5)
-    # Pairs should not be duplicated
-    pair_keys = [(m["source_doc"], m["match_doc"]) for m in matches]
-    reversed_keys = [(m["match_doc"], m["source_doc"]) for m in matches]
-    for key in pair_keys:
-        assert key not in reversed_keys or pair_keys.count(key) == 1
-
+    # Chunk-pairs should not be duplicated (including symmetric duplicates)
+    pair_keys = [
+        tuple(sorted([(m["source_doc"], m["source_chunk_text"]), (m["match_doc"], m["match_chunk_text"])]))
+        for m in matches
+    ]
+    assert len(pair_keys) == len(set(pair_keys))
 
 def test_find_plagiarised_chunks_sorted_descending(two_doc_data):
     embeddings, chunked = two_doc_data
