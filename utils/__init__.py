@@ -22,6 +22,18 @@ from .faiss_index import (
     save_index,
     load_index,
     ChunkRecord,
+    build_index_from_matrix,
+)
+from .corpus_db import (
+    init_corpus_db,
+    add_document,
+    get_document_by_hash,
+    get_all_documents,
+    add_chunks,
+    get_chunk_registry,
+    get_all_embeddings,
+    delete_document,
+    clear_all_data,
 )
 
 __all__ = [
@@ -33,5 +45,8 @@ __all__ = [
     "flag_plagiarism", "find_most_similar_chunks", "PLAGIARISM_THRESHOLD",
     "plot_similarity_heatmap", "plot_chunk_similarity_comparison",
     "build_index", "search_similar_chunks", "find_plagiarised_chunks",
-    "save_index", "load_index", "ChunkRecord",
+    "save_index", "load_index", "ChunkRecord", "build_index_from_matrix",
+    "init_corpus_db", "add_document", "get_document_by_hash",
+    "get_all_documents", "add_chunks", "get_chunk_registry",
+    "get_all_embeddings", "delete_document", "clear_all_data",
 ]
