@@ -43,8 +43,9 @@ def test_chunk_max_similarity(dummy_embeddings):
 
 
 def test_chunk_max_similarity_supports_batching(dummy_embeddings):
-    sim_ab = chunk_max_similarity(dummy_embeddings["doc_A"], dummy_embeddings["doc_B"], batch_size=1)
-    assert sim_ab > 0.8
+    sim_unbatched = chunk_max_similarity(dummy_embeddings["doc_A"], dummy_embeddings["doc_B"])
+    sim_batched = chunk_max_similarity(dummy_embeddings["doc_A"], dummy_embeddings["doc_B"], batch_size=1)
+    assert np.isclose(sim_batched, sim_unbatched)
 
 
 def test_document_similarity_matrix(dummy_embeddings):
