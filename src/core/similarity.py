@@ -12,7 +12,7 @@ cosine similarity reduces to the dot product, making this very fast.
 import numpy as np
 import pandas as pd
 from sklearn.metrics.pairwise import cosine_similarity
-from typing import Dict, List, Tuple
+from typing import Dict, List, Optional, Tuple
 
 # ── Threshold ──────────────────────────────────────────────────────────────────
 # Empirically determined optimal value via evaluation/evaluate.py (F1 = 1.0).
@@ -21,9 +21,29 @@ from typing import Dict, List, Tuple
 PLAGIARISM_THRESHOLD = 0.59
 
 
+# ── Validation helpers ─────────────────────────────────────────────────────────
+
+def _validated_batch_size(batch_size: Optional[int]) -> Optional[int]:
+    """Return a safe integer batch size or None for unbatched execution."""
+    if batch_size is None:
+        return None
+    if isinstance(batch_size, bool):
+        raise ValueError("batch_size must be an integer")
+    if isinstance(batch_size, (float, np.floating)) and not float(batch_size).is_integer():
+        raise ValueError("batch_size must be an integer")
+    try:
+        size = int(batch_size)
+    except (TypeError, ValueError) as exc:
+        raise ValueError("batch_size must be an integer") from exc
+    return size if size > 0 else None
+
+
 # ── Document-level similarity ──────────────────────────────────────────────────
 
-def document_similarity_matrix(doc_embeddings: Dict[str, np.ndarray]) -> pd.DataFrame:
+def document_similarity_matrix(
+    doc_embeddings: Dict[str, np.ndarray],
+    batch_size: Optional[int] = None,
+) -> pd.DataFrame:
     """
     Build an N×N cosine similarity matrix between all document pairs.
 
@@ -31,6 +51,9 @@ def document_similarity_matrix(doc_embeddings: Dict[str, np.ndarray]) -> pd.Data
 
     Args:
         doc_embeddings: Dict mapping doc name → embedding array (chunks × 384).
+        batch_size: Optional number of documents to compare per batch.
+            When set, the similarity computation is carried out in smaller blocks
+            to reduce peak memory usage for larger datasets.
 
     Returns:
         Symmetric pandas DataFrame with document names as index and columns.
@@ -54,18 +77,59 @@ def document_similarity_matrix(doc_embeddings: Dict[str, np.ndarray]) -> pd.Data
     matrix = np.zeros((n, n))
     if doc_vectors:
         stacked = np.vstack(doc_vectors)           # (N, 384)
-        sim = cosine_similarity(stacked)           # (N, N)
-        matrix = np.clip(sim, 0.0, 1.0)           # Numerical safety
+        safe_batch_size = _validated_batch_size(batch_size)
+        if safe_batch_size is None:
+            sim = cosine_similarity(stacked)       # (N, N)
+            matrix = np.clip(sim, 0.0, 1.0)       # Numerical safety
+        else:
+            for start in range(0, n, safe_batch_size):
+                end = min(start + safe_batch_size, n)
+                sim = cosine_similarity(stacked[start:end], stacked)
+                matrix[start:end] = np.clip(sim, 0.0, 1.0)
 
     df = pd.DataFrame(matrix, index=doc_names, columns=doc_names)
     return df
+
+
+# ── Hybrid similarity (lexical + semantic) ─────────────────────────────────────
+
+def hybrid_similarity_matrix(
+    semantic_df: pd.DataFrame,
+    lexical_df: pd.DataFrame,
+    w: float = 0.7
+) -> pd.DataFrame:
+    """
+    Combine semantic and lexical similarity matrices using a weighted formula.
+
+    Args:
+        semantic_df: Symmetric DataFrame from document_similarity_matrix().
+        lexical_df: Symmetric DataFrame from lexical_similarity_matrix().
+        w: Weight for semantic similarity (0.0 = pure lexical, 1.0 = pure semantic).
+           Default is 0.7, favoring semantic similarity.
+
+    Returns:
+        Symmetric DataFrame with hybrid similarity scores.
+        hybrid_score = w * semantic + (1 - w) * lexical
+    """
+    if not (0.0 <= w <= 1.0):
+        raise ValueError(f"Weight w must be between 0.0 and 1.0, got {w}")
+
+    # Ensure both DataFrames have the same shape and index/columns
+    if semantic_df.shape != lexical_df.shape:
+        raise ValueError("Semantic and lexical matrices must have the same shape")
+    if not semantic_df.index.equals(lexical_df.index) or not semantic_df.columns.equals(lexical_df.columns):
+        raise ValueError("Semantic and lexical matrices must have the same index and columns")
+
+    hybrid_df = w * semantic_df + (1 - w) * lexical_df
+    return hybrid_df
 
 
 # ── Chunk-level similarity (local plagiarism detection) ────────────────────────
 
 def chunk_max_similarity(
     emb_a: np.ndarray,
-    emb_b: np.ndarray
+    emb_b: np.ndarray,
+    batch_size: Optional[int] = None,
 ) -> float:
     """
     Compute the maximum pairwise cosine similarity between chunks of two documents.
@@ -76,6 +140,9 @@ def chunk_max_similarity(
     Args:
         emb_a: Chunk embeddings for document A  (Na × 384)
         emb_b: Chunk embeddings for document B  (Nb × 384)
+        batch_size: Optional number of rows/columns to compare per batch.
+            When set, the comparison is processed in smaller blocks to lower
+            peak memory usage for large chunk sets.
 
     Returns:
         Maximum cosine similarity across all chunk pairs (float 0–1).
@@ -83,11 +150,27 @@ def chunk_max_similarity(
     if emb_a.size == 0 or emb_b.size == 0:
         return 0.0
 
-    sim_matrix = cosine_similarity(emb_a, emb_b)    # (Na, Nb)
-    return float(np.max(sim_matrix))
+    safe_batch_size = _validated_batch_size(batch_size)
+    if safe_batch_size is None:
+        sim_matrix = cosine_similarity(emb_a, emb_b)    # (Na, Nb)
+        return float(np.max(sim_matrix))
+
+    max_score = 0.0
+    for start_a in range(0, emb_a.shape[0], safe_batch_size):
+        end_a = min(start_a + safe_batch_size, emb_a.shape[0])
+        for start_b in range(0, emb_b.shape[0], safe_batch_size):
+            end_b = min(start_b + safe_batch_size, emb_b.shape[0])
+            sim_matrix = cosine_similarity(emb_a[start_a:end_a], emb_b[start_b:end_b])
+            max_score = max(max_score, float(np.max(sim_matrix)))
+            if max_score >= 1.0:
+                return max_score
+    return max_score
 
 
-def chunk_similarity_matrix(doc_embeddings: Dict[str, np.ndarray]) -> pd.DataFrame:
+def chunk_similarity_matrix(
+    doc_embeddings: Dict[str, np.ndarray],
+    batch_size: Optional[int] = None,
+) -> pd.DataFrame:
     """
     Build an N×N matrix where each cell is the MAX chunk-pair similarity.
 
@@ -96,6 +179,8 @@ def chunk_similarity_matrix(doc_embeddings: Dict[str, np.ndarray]) -> pd.DataFra
 
     Args:
         doc_embeddings: Dict mapping doc name → embedding array.
+        batch_size: Optional number of chunks to compare per batch for each
+            document pair.
 
     Returns:
         Symmetric pandas DataFrame with max-chunk similarity values.
@@ -110,7 +195,9 @@ def chunk_similarity_matrix(doc_embeddings: Dict[str, np.ndarray]) -> pd.DataFra
                 matrix[i][j] = 1.0
             elif j > i:
                 score = chunk_max_similarity(
-                    doc_embeddings[name_a], doc_embeddings[name_b]
+                    doc_embeddings[name_a],
+                    doc_embeddings[name_b],
+                    batch_size=batch_size,
                 )
                 matrix[i][j] = score
                 matrix[j][i] = score   # Symmetric

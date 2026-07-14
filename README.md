@@ -27,15 +27,17 @@ similarity, and **FAISS vector search**.
 | Feature | Detail |
 |---|---|
 | **Semantic understanding** | Detects paraphrased plagiarism, not just copy-paste |
-| **Transformer embeddings** | `all-MiniLM-L6-v2` (384-dim, fast, accurate) |
+| **Transformer embeddings** | `paraphrase-multilingual-MiniLM-L12-v2` (384-dim, multilingual, accurate) |
 | **FAISS vector search** | Adaptive indexing (Flat / IVF) — scales to thousands of assignments |
 | **Paragraph chunking** | Detects localised section-level plagiarism |
-| **Similarity matrix** | Full N×N pairwise document comparison |
-| **Heatmap visualisation** | Green–Red heatmap with flagged-pair borders |
+| **Similarity matrix** | Full N×N pairwise document comparison; downloadable as CSV or Excel |
+| **Interactive heatmap** | Plotly heatmap with hover tooltips; toggle to static Seaborn view |
 | **Pair drill-down** | See exactly which paragraphs match |
 | **Custom text query** | Paste any snippet to search against all uploaded assignments |
+| **Authentication** | Login system with role-based access (admin / teacher) |
+| **User management** | Admin can create, reset passwords, and delete users |
 | **Streamlit dashboard** | Clean, teacher-friendly web interface |
-| **Configurable threshold** | Adjustable via sidebar slider (default 0.75) |
+| **Configurable threshold** | Adjustable via sidebar slider (default 0.59) |
 
 ---
 
@@ -55,8 +57,8 @@ similarity, and **FAISS vector search**.
               └─────────────────────────────────────────────────────┘
                     │         │          │         │        │       │
               ┌─────▼──┐ ┌───▼────┐ ┌───▼────┐ ┌──▼────┐ ┌▼─────┐ ┌▼──────┐
-              │pdf_    │ │text_   │ │embed-  │ │faiss_ │ │simi- │ │heat-  │
-              │reader  │ │chunking│ │ding_   │ │index  │ │larity│ │map.py │
+              │document│ │text_   │ │embed-  │ │faiss_ │ │simi- │ │heat-  │
+              │_parser │ │chunking│ │ding_   │ │index  │ │larity│ │map.py │
               │.py     │ │.py     │ │model.py│ │.py    │ │.py   │ │       │
               └────────┘ └────────┘ └────────┘ └───────┘ └──────┘ └───────┘
 ```
@@ -65,13 +67,17 @@ similarity, and **FAISS vector search**.
 
 | Module | Responsibility |
 |---|---|
-| `utils/pdf_reader.py` | Extract raw text from PDFs via PyPDF2 |
-| `utils/text_chunking.py` | Split text into paragraph chunks (20–200 words) |
-| `utils/embedding_model.py` | Generate L2-normalised embeddings via SentenceTransformers |
-| `utils/faiss_index.py` | Build FAISS index (Flat/IVF); chunk-level search across all documents |
-| `utils/similarity.py` | Compute cosine similarity matrices; flag plagiarism |
-| `utils/heatmap.py` | Render Seaborn heatmaps (document-level & chunk-level) |
-| `app/streamlit_app.py` | Streamlit UI: upload, warnings, FAISS search, heatmap, drill-down |
+| `src/core/document_parser.py` | Extract raw text from PDF, DOCX, and TXT files |
+| `src/core/text_chunking.py` | Split text into paragraph chunks (20–200 words) |
+| `src/core/embedding_model.py` | Generate L2-normalised embeddings via SentenceTransformers |
+| `src/core/faiss_index.py` | Build FAISS index (Flat/IVF); chunk-level search across all documents |
+| `src/core/similarity.py` | Compute cosine similarity matrices; flag plagiarism |
+| `src/core/translator.py` | Translate non-English matching paragraphs to English |
+| `src/db/auth.py` | SQLite-backed authentication with bcrypt password hashing |
+| `src/db/corpus_db.py` | SQLite database manager for metadata, text chunks, and embedding vectors |
+| `src/visualization/heatmap.py` | Render Seaborn/Plotly heatmaps (document-level & chunk-level) |
+| `src/visualization/network_graph.py` | Render interactive Plotly plagiarism networks using spring layout |
+| `app/streamlit_app.py` | Streamlit UI: login, upload, warnings, FAISS search, heatmap, drill-down |
 
 ---
 
@@ -80,22 +86,44 @@ similarity, and **FAISS vector search**.
 ```
 semantic_plagiarism_detector/
 │
-├── utils/
-│   ├── __init__.py           # Package exports
-│   ├── pdf_reader.py         # PDF text extraction
-│   ├── text_chunking.py      # Paragraph-level chunking
-│   ├── embedding_model.py    # Sentence Transformer wrapper
-│   ├── faiss_index.py        # FAISS vector index (Flat / IVF)
-│   ├── similarity.py         # Cosine similarity & plagiarism flagging
-│   └── heatmap.py            # Matplotlib/Seaborn visualisations
+├── src/                      # Source package containing all components
+│   ├── __init__.py           # Exports backward-compatible unified public API
+│   │
+│   ├── core/                 # Core NLP and mathematical algorithms
+│   │   ├── __init__.py
+│   │   ├── document_parser.py# PDF, Word, and Text parser
+│   │   ├── text_chunking.py  # Paragraph segmenter
+│   │   ├── embedding_model.py# Sentence Transformer model loader
+│   │   ├── faiss_index.py    # Vector search indexing (Flat / IVF)
+│   │   ├── similarity.py     # Cosine similarity calculations
+│   │   └── translator.py     # Translation helper
+│   │
+│   ├── db/                   # Database systems
+│   │   ├── __init__.py
+│   │   ├── auth.py           # SQLite login database
+│   │   └── corpus_db.py      # SQLite corpus document & vector database
+│   │
+│   └── visualization/        # Charting & visualizations
+│       ├── __init__.py
+│       ├── heatmap.py        # Cosine similarity heatmaps
+│       └── network_graph.py  # Plagiarism connection networks
 │
 ├── app/
-│   └── streamlit_app.py      # Main web dashboard (5 tabs)
+│   └── streamlit_app.py      # Streamlit Entry Dashboard
+│
+├── tests/                    # Reorganized unit testing suite
+│   ├── conftest.py           # Testing configuration/stubs
+│   ├── core/                 # Unit tests for NLP and indexing
+│   ├── db/                   # Unit tests for databases
+│   └── visualization/        # Unit tests for plots
+│
+├── users.db                  # SQLite user store (auto-created on first run)
+├── corpus.db                 # SQLite document store (auto-created on first run)
 │
 ├── evaluation/
-│   ├── benchmark_dataset.json  # 25 labelled text pairs
-│   ├── evaluate.py             # Precision/recall/F1 + ROC curves
-│   └── results/                # Generated plots & metrics (gitignored)
+│   ├── benchmark_dataset.json# 25 labelled text pairs
+│   ├── evaluate.py           # Precision/recall/F1 + ROC curves
+│   └── results/              # Generated plots & metrics (gitignored)
 │
 ├── .gitignore
 ├── requirements.txt
@@ -126,7 +154,7 @@ source venv/bin/activate        # Windows: venv\Scripts\activate
 pip install -r requirements.txt
 ```
 
-> **Note:** The first run will download the `all-MiniLM-L6-v2` model (~90 MB).
+> **Note:** The first run will download the `paraphrase-multilingual-MiniLM-L12-v2` model (~420 MB).
 > Subsequent runs use the local cache.
 
 ### 4. Launch the Streamlit dashboard
@@ -137,16 +165,64 @@ streamlit run app/streamlit_app.py
 
 The app opens at **http://localhost:8501**.
 
+### Default credentials
+
+| Username | Password | Role |
+|---|---|---|
+| `admin` | `admin123` | Admin — full access + user management |
+
+Additional users can be created from the **User Management** page (admin only).
+
+---
+
+## OCR support for scanned PDFs
+
+Scanned and image-only PDFs are automatically detected page by page. Pages that
+do not contain enough embedded text are rendered with PyMuPDF and processed
+locally with Tesseract OCR. The extracted text then follows the same paragraph
+chunking, embedding, FAISS, and similarity pipeline as regular PDFs.
+
+### Python dependencies
+
+```bash
+python -m pip install pytesseract pymupdf pillow
+```
+
+### Tesseract system dependency
+
+Tesseract must also be installed on the operating system.
+
+On Windows, it is commonly installed at:
+
+```text
+C:\Program Files\Tesseract-OCR\tesseract.exe
+```
+
+When it is not available on PATH, set:
+
+```powershell
+$env:TESSERACT_CMD="C:\Program Files\Tesseract-OCR\tesseract.exe"
+```
+
+Verify the installation:
+
+```powershell
+tesseract --version
+```
+
+OCR is performed locally; uploaded documents are not sent to an external OCR
+service.
+
 ---
 
 ## 🖥️ Dashboard — 5 Tabs
 
 | Tab | What it shows |
 |---|---|
-| **Plagiarism Warnings** | All flagged pairs sorted by severity (High / Medium) |
+| **Plagiarism Warnings** | All flagged pairs sorted by severity (High / Medium); downloadable CSV |
 | **FAISS Chunk Search** | Chunk-level ANN search across all documents; custom text query box |
-| **Similarity Matrix** | Full N×N similarity table; downloadable as CSV |
-| **Heatmap** | Visual colour matrix with red borders on flagged pairs; downloadable PNG |
+| **Similarity Matrix** | Full N×N similarity table; downloadable as CSV or Excel |
+| **Heatmap** | Interactive Plotly heatmap (hover values) or static Seaborn view; downloadable PNG |
 | **Pair Drill-Down** | Select any two docs to see which specific paragraphs match |
 
 ---
@@ -155,12 +231,12 @@ The app opens at **http://localhost:8501**.
 
 | Setting | Default | Description |
 |---|---|---|
-| Plagiarism threshold | `0.75` | Pairs above this score are flagged |
+| Plagiarism threshold | `0.59` | Pairs above this score are flagged |
 | FAISS matches per chunk | `5` | Nearest neighbours retrieved per chunk |
 | Chunk min words | `20` | Paragraphs shorter than this are discarded |
 | Chunk max words | `200` | Longer paragraphs are sub-split at sentence boundaries |
-| Embedding model | `all-MiniLM-L6-v2` | Change in `utils/embedding_model.py` |
-| Batch size | `64` | Tune for GPU/CPU in `embedding_model.py` |
+| Embedding model | `paraphrase-multilingual-MiniLM-L12-v2` | Change in `src/core/embedding_model.py` or set `SEMANTIC_PLAGIARISM_MODEL` |
+| Batch size | `64` | Tune for GPU/CPU in `src/core/embedding_model.py` |
 
 ---
 
@@ -174,7 +250,7 @@ Text is split on blank lines into chunks of 20–200 words.
 Short chunks (headers, captions) are discarded; long chunks are sub-split at sentence boundaries.
 
 ### Step 3 – Embedding
-Each chunk is passed through `all-MiniLM-L6-v2`:
+Each chunk is passed through `paraphrase-multilingual-MiniLM-L12-v2`:
 - Output: 384-dimensional, L2-normalised vector
 - L2 normalisation means cosine similarity = dot product (fast)
 
@@ -235,11 +311,15 @@ Results are **cached by Streamlit** — re-uploading the same files is instant.
 | `faiss-cpu` | Vector search (exact / approximate nearest-neighbour) |
 | `PyPDF2` | PDF text extraction |
 | `streamlit` | Web dashboard |
+| `bcrypt` | Password hashing for authentication |
+| `python-dotenv` | Load environment variables from `.env` |
 | `numpy` | Numerical operations |
 | `pandas` | Similarity DataFrame |
 | `scikit-learn` | `cosine_similarity` utility |
-| `seaborn` | Heatmap styling |
+| `plotly` | Interactive heatmap with hover tooltips |
+| `seaborn` | Static heatmap styling |
 | `matplotlib` | Figure rendering |
+| `openpyxl` | Excel export for similarity matrix |
 
 ---
 
