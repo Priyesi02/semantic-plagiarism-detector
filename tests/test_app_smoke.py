@@ -31,7 +31,7 @@ def mock_embed_chunks(chunks, batch_size=64):
     val = 1.0 / (384 ** 0.5)
     return np.full((len(chunks), 384), val, dtype="float32")
 
-@patch("src.send_plagiarism_alert")
+@patch("src.core.webhook.send_plagiarism_alert")
 @patch("src.core.embedding_model.embed_chunks", side_effect=mock_embed_chunks)
 def test_app_smoke(mock_embed, mock_webhook):
     # Instantiate AppTest
